@@ -40,7 +40,7 @@ def save_results(output_path, results, configuration):
         json.dump(new_dict, f)
 
 
-def load_model_configuration(model_configuration_file: str, args: dict) -> DictConfig:
+def load_model_configuration(model_configuration_file: str, args: dict, run_configuration) -> DictConfig:
     model_configuration_file = os.path.expandvars(model_configuration_file)
     with open(model_configuration_file, 'r') as f:
         for key, value in args.items():
@@ -48,6 +48,7 @@ def load_model_configuration(model_configuration_file: str, args: dict) -> DictC
         yaml_conf = yaml.safe_load(f)
         conf = OmegaConf.create(yaml_conf)
         conf.file = model_configuration_file
+        conf.run_configuration = run_configuration
         return conf
 
 
@@ -75,7 +76,8 @@ def get_model_factory(conf: DictConfig):
 def get_transform_by_name(t, cfg):
     type = t['type']
     if type == 'xmi-dump':
-        return DumpXmiTransform(cfg.cache)
+        run_configuration = cfg.run_configuration
+        return DumpXmiTransform(cfg.cache, run_configuration.dataset.model_type)
     elif type == 'docker':
         return DockerTransform(cfg, t)
     elif type == 'vectorize-text':
@@ -165,7 +167,7 @@ def main(cfg: DictConfig):
 
     for arg in args_model:
         if "reference" in cfg.model:
-            conf = load_model_configuration(cfg.model.reference, arg)
+            conf = load_model_configuration(cfg.model.reference, arg, cfg)
             set_cache_dir(conf, cfg.cachedir)
             ml_model = get_model_factory(conf)
             cfg_transform = get_transform(conf)

@@ -96,9 +96,10 @@ class NoneFeatureTransform(FeatureTransform):
 
 class DumpXmiTransform(FeatureTransform):
 
-    def __init__(self, cache):
+    def __init__(self, cache, model_type):
         super().__init__()
         self.cache_dir = cache
+        self.model_type = model_type
 
     def transform(self, df, what):
         xmi_folder = os.path.join("xmi-dump", what)
@@ -107,6 +108,8 @@ class DumpXmiTransform(FeatureTransform):
 
         for index, row in df.iterrows():
             extension = os.path.splitext(row['ids'])[1]
+            if extension is None or extension == '':
+                extension = '.' + self.model_type
             xmi_contents = row['xmi']
             xmi_file = os.path.join(full_xmi_folder, f"file-{index}{extension}")
             with open(xmi_file, 'w') as f:
