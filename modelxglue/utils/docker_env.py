@@ -36,6 +36,11 @@ def run_docker(root: str, shared_folder={}, command=None):
     for line in process:
         print(line)
 
+    # Check return code of the container process
+    exit_code = container.wait()['StatusCode']
+    print('Container exited with code', exit_code)
+    if exit_code != 0:
+        raise Exception("Container exited with code", exit_code)
 
 def build_image(root: str):
     # Uses the low-level API to build an image from a Dockerfile. This is needed to make sure that the output
