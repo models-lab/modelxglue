@@ -10,8 +10,12 @@ import hydra
 import numpy as np
 import hashlib
 
+from hydra._internal.config_repository import ConfigRepository
+from hydra.core.global_hydra import GlobalHydra
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
+from modelxglue.dataset.split import SplitConfiguration
 from modelxglue.evaluation_strategies import train_test_val, k_fold_alone, clustering, recommendation
 from modelxglue.features.features import FEATURES
 from modelxglue.features.transform import NoneFeatureTransform, DumpXmiTransform, TransformConfiguration, \
@@ -107,6 +111,14 @@ def get_transform(cfg) -> TransformConfiguration:
     return result
 
 
+def load_test_dataset(dataset_name: str, task_name: str):
+    gh = GlobalHydra.instance()
+    rep = ConfigRepository(gh.config_loader().get_search_path())
+    test_dataset_cfg = rep.load_config("dataset/" + dataset_name).config
+
+    return load_dataset(test_dataset_cfg, task_name)
+
+
 def execute_task(cfg, cfg_transform, model_hyperparameters, ml_model, pd_dataset):
     if cfg.task.task_name == 'classification':
         if cfg.task.evaluation_strategy == 'train_test_val':
@@ -132,17 +144,31 @@ def execute_task(cfg, cfg_transform, model_hyperparameters, ml_model, pd_dataset
                              size_dataset=cfg.task.size_dataset,
                              cfg_transform=cfg_transform)
     elif cfg.task.task_name == 'feature_recommendation':
-        results = recommendation(pd_dataset, seed=cfg.seed, features=cfg.model.encoding_features,
+        test_dataset_df = None
+        if 'test_dataset' in cfg.task:
+            test_dataset_df = load_test_dataset(cfg.task.test_dataset, cfg.task.task_name)
+
+        split = SplitConfiguration(pd_dataset, cfg.seed,
+                                   train_split=cfg.task.train_split, test_split=cfg.task.test_split,
+                                   val_split=cfg.task.val_split,
+                                   test_dataset_df=test_dataset_df)
+        results = recommendation(seed=cfg.seed, features=cfg.model.encoding_features,
                                  metric_name=cfg.task.metric,
-                                 train_test_val_splits=(cfg.task.train_split,
-                                                        cfg.task.test_split,
-                                                        cfg.task.val_split),
+                                 split=split,
                                  model=ml_model, topk=cfg.task.topk,
                                  cfg_transform=cfg_transform,
-                                 hyperparameters=model_hyperparameters)
+                                 hyperparameters=model_hyperparameters,
+                                 config=cfg)
     else:
         raise ValueError(f'{cfg.task.task_name} not supported.')
     return results
+
+
+def load_dataset(dataset, task_name):
+    return read_dataset(path_hg=dataset.dataset_hg,
+                        model_type=dataset.model_type,
+                        include_duplicates=dataset.include_duplicates,
+                        task=task_name)
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -151,10 +177,7 @@ def main(cfg: DictConfig):
     # some_compatibility_checks(cfg.model.ml_model, cfg.model.encoding_features)
     seed_all(cfg.seed)
 
-    pd_dataset = read_dataset(path_hg=cfg.dataset.dataset_hg,
-                              model_type=cfg.dataset.model_type,
-                              include_duplicates=cfg.dataset.include_duplicates,
-                              task=cfg.task.task_name)
+    pd_dataset = load_dataset(cfg.dataset, cfg.task.task_name)
     logger.info(f'Loaded {cfg.dataset.dataset_hg}, samples: {len(pd_dataset)}')
 
     model_hyperparameters = get_model_hyperparameters(cfg.model.hyperparameters) \

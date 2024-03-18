@@ -9,10 +9,12 @@ from sklearn.base import ClassifierMixin
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from tqdm import tqdm
 
+from .dataset.split import SplitConfiguration
 from .features.features import get_features, dataset_as_format
 from .features.transform import TransformConfiguration
 from .models.models import get_model_object, ModelFactory
 from .utils.metrics import eval_metrics
+
 
 def do_train(model2train, X, y):
     if isinstance(model2train, ClassifierMixin):
@@ -20,11 +22,13 @@ def do_train(model2train, X, y):
     else:
         model2train.train(X, y)
 
+
 def do_test(model2train, X):
     if isinstance(model2train, ClassifierMixin):
         return model2train.predict(X)
     else:
         return model2train.test(X)
+
 
 def train_test_val(dataset, seed, features, hyperparameters, model, metric_name, cfg_transform: TransformConfiguration,
                    train_test_val_splits=(0.7, 0.2, 0.1)):
@@ -45,7 +49,7 @@ def train_test_val(dataset, seed, features, hyperparameters, model, metric_name,
             X_train = training_ft.transform(X_train, what='training-set')
             X_val = val_ft.transform(X_val, what='validation-set')
         else:
-            X_train, X_val = get_features(features, dataset, ids_train, ids_val)
+            X_train, X_val = get_features(features, dataset, dataset, ids_train, ids_val)
 
         for p in tqdm(hyperparameters):
             model2train = get_model_object(model, p, seed)
@@ -70,7 +74,7 @@ def train_test_val(dataset, seed, features, hyperparameters, model, metric_name,
         X_train_val = training_ft.transform(X_train_val, what='training-validation-set')
         X_test = test_ft.transform(X_test, what='test-set')
     else:
-        X_train_val, X_test = get_features(features, dataset, ids_train_val, ids_test)
+        X_train_val, X_test = get_features(features, dataset, dataset, ids_train_val, ids_test)
 
     model2train = get_model_object(model, best_hyper, seed)
     do_train(model2train, X_train_val, y_train_val)
@@ -101,7 +105,7 @@ def k_fold(dataset, seed, features, hyperparameters, model, folds, cfg_transform
             X_train = training_ft.transform(X_train, what='training-set')
             X_val = val_ft.transform(X_val, what='validation-set')
         else:
-            X_train, X_val = get_features(features, dataset, ids_train, ids_val)
+            X_train, X_val = get_features(features, dataset, dataset, ids_train, ids_val)
 
         # hyperparameter selection
         if hyperparameters:
@@ -123,7 +127,8 @@ def k_fold(dataset, seed, features, hyperparameters, model, folds, cfg_transform
     return scores
 
 
-def k_fold_alone(dataset, seed, features, hyperparameters, model, folds, cfg_transform: TransformConfiguration, metric_name):
+def k_fold_alone(dataset, seed, features, hyperparameters, model, folds, cfg_transform: TransformConfiguration,
+                 metric_name):
     scores = k_fold(dataset, seed, features, hyperparameters, model, folds, cfg_transform, metric_name)
     scores_mean = {x: np.mean(np.array(y), axis=0).astype(np.float64).tolist() for x, y in scores.items()}
     scores = {x: np.array(y).astype(np.float64).tolist() for x, y in scores.items()}
@@ -165,7 +170,7 @@ def clustering(dataset, seed, features, hyperparameters, model, resampling, metr
             if 'n_clusters' in p and p['n_clusters'] == 'compute':
                 p['n_clusters'] = num_labels
 
-            model2train = get_model_object(model, p, seed )
+            model2train = get_model_object(model, p, seed)
             labels = model2train.build(X_train)
             s = eval_metrics(metric_name, X=X_train, y_true=y_train, y_pred=labels)
             scores[json.dumps(p)].append(s)
@@ -196,30 +201,28 @@ def debug(v, name):
         print("Skipping dumping numpy array")
         return
 
+    dump_data(v, "/tmp", name)
+
+
+def dump_data(v, path, name):
     # check if v is a DataFrame
     if isinstance(v, pd.DataFrame):
-        v.to_csv(os.path.join("/tmp", name + ".csv"), index=False)
+        v.to_csv(os.path.join(path, name + ".csv"), index=False)
     else:
-        with open(os.path.join("/tmp", name + ".json"), "w") as f:
+        with open(os.path.join(path, name + ".json"), "w") as f:
             json.dump(v, f)
 
 
-def recommendation(dataset, seed, features, metric_name,
-                   train_test_val_splits, model, topk,
+def recommendation(seed, features, metric_name,
+                   split: SplitConfiguration, model, topk,
                    cfg_transform: TransformConfiguration,
-                   hyperparameters):
-    ids_train_val, ids_test = train_test_split(list(dataset['ids']),
-                                               test_size=train_test_val_splits[1],
-                                               random_state=seed)
-    ids_train, ids_val = train_test_split(ids_train_val,
-                                          test_size=train_test_val_splits[2] / train_test_val_splits[0],
-                                          random_state=seed)
+                   hyperparameters, config):
 
     scores = []
     if len(hyperparameters) > 1:
         logging.info("Validation...")
 
-        X_train, X_val = get_features(features, dataset, ids_train, ids_val)
+        X_train, X_val = get_features(features, split.train_dataset, split.val_dataset)
 
         training_ft, val_ft = cfg_transform.get_transform_for('training-set', 'test-set')
         X_train = training_ft.transform(X_train, what='training-set')
@@ -250,7 +253,7 @@ def recommendation(dataset, seed, features, metric_name,
 
     logging.info("Test...")
     # evaluation test set
-    X_train_val, X_test = get_features(features, dataset, ids_train_val, ids_test)
+    X_train_val, X_test = get_features(features, split.train_val_dataset, split.test_dataset)
 
     training_ft, test_ft = cfg_transform.get_transform_for('training-set', 'test-set')
     X_train_val = training_ft.transform(X_train_val, what='training-validation-set')
@@ -270,6 +273,8 @@ def recommendation(dataset, seed, features, metric_name,
     debug(y_pred, "y_test_pred")
     debug(y_test, "y_test")
 
+    dump_data(y_pred, model.conf.cache, "y_test_pred")
+    dump_data(y_test, model.conf.cache, "y_test")
 
     score_test = eval_metrics(metric_name, y_true=y_test, y_pred=y_pred)
 

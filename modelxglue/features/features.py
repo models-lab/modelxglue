@@ -27,20 +27,19 @@ def get_features_w2v(doc, model, dim=300):
     vectors = np.stack([model.wv[w] for w in words])
     return np.mean(vectors, axis=0)
 
-def filter_dataset(dataset, ids_train, ids_val):
-    train_dataset = dataset[dataset['ids'].isin(ids_train)]
-    train_dataset.ids = train_dataset.ids.astype("category")
-    train_dataset.ids = train_dataset.ids.cat.set_categories(ids_train)
-    train_dataset = train_dataset.sort_values(["ids"])
-    val_dataset = dataset[dataset['ids'].isin(ids_val)]
-    val_dataset.ids = val_dataset.ids.astype("category")
-    val_dataset.ids = val_dataset.ids.cat.set_categories(ids_val)
-    val_dataset = val_dataset.sort_values(["ids"])
-    return train_dataset, val_dataset
+
+def filter_dataset(dataset, ids):
+    new_dataset = dataset[dataset['ids'].isin(ids)]
+    new_dataset.ids = new_dataset.ids.astype("category")
+    new_dataset.ids = new_dataset.ids.cat.set_categories(ids)
+    new_dataset = new_dataset.sort_values(["ids"])
+    return new_dataset
+
 
 def dataset_as_format(dataset, format, ids_train, ids_val):
     format = format.upper()
-    train_dataset, val_dataset = filter_dataset(dataset, ids_train, ids_val)
+    train_dataset, val_dataset = (filter_dataset(dataset, ids_train),
+                                  filter_dataset(dataset, ids_val))
 
     if format == 'XMI':
         xmi_train = train_dataset[['ids', 'xmi']]
@@ -56,9 +55,11 @@ def dataset_as_format(dataset, format, ids_train, ids_val):
         return txt_train, txt_val
 
 
-
-def get_features(features, dataset, ids_train, ids_val):
-    train_dataset, val_dataset = filter_dataset(dataset, ids_train, ids_val)
+def get_features(features, train_dataset, val_dataset, ids_train=None, ids_val=None):
+    if ids_train is not None:
+        train_dataset = filter_dataset(train_dataset, ids_train)
+    if ids_val is not None:
+        filter_dataset(val_dataset, ids_val)
 
     corpus_train = list(train_dataset['txt'])
     corpus_val = list(val_dataset['txt'])
