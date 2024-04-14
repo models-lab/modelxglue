@@ -14,7 +14,7 @@ class SplitConfiguration:
             self.ids_test = list(test_dataset_df['ids'])
             self.test_dataset = test_dataset_df
 
-            if test_split != 0:
+            if 0 < test_split < 1:
                 random.seed(123)
                 self.ids_tests = random.sample(self.ids_test, k=int(test_split * len(self.ids_test)))
                 self.test_dataset = self.test_dataset.loc[self.test_dataset['ids'].isin(self.ids_tests)]

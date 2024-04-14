@@ -56,6 +56,21 @@ def load_model_configuration(model_configuration_file: str, args: dict, run_conf
         return conf
 
 
+def load_transform_configuration(transform_configuration_file: str, args: dict, run_configuration) -> DictConfig:
+    transform_configuration_file = os.path.expandvars(transform_configuration_file)
+    if os.path.isdir(transform_configuration_file):
+        transform_configuration_file = os.path.join(transform_configuration_file, 'transform.yaml')
+
+    with open(transform_configuration_file, 'r') as f:
+        for key, value in args.items():
+            OmegaConf.register_new_resolver(f"args.{key}", lambda default_value: value, replace=True)
+        yaml_conf = yaml.safe_load(f)
+        conf = OmegaConf.create(yaml_conf)
+        conf.file = transform_configuration_file
+        conf.run_configuration = run_configuration
+        return conf
+
+
 # Creates the cache directory for this model and modifies the configuration
 # to point to it (cache attribute).
 def set_cache_dir(conf, cachedir):
@@ -96,16 +111,35 @@ def get_transform_by_name(t, cfg):
         raise ValueError(f'Transform {type} not supported.')
 
 
-def get_transform(cfg) -> TransformConfiguration:
+def get_external_transform(t, model_cfg, benchmark_cfg):
+    """
+    Given a transform specification which references an external transformation component,
+    returns a FeatureTransform object.
+    """
+    transform_conf = load_transform_configuration(t.reference, {}, benchmark_cfg)
+    transform_folder = os.path.dirname(transform_conf.file)
+
+    # Assume docker execution environment
+    return DockerTransform(model_cfg, transform_conf.environment, transform_folder=transform_folder)
+
+
+def get_transform(model_cfg, benchmark_cfg) -> TransformConfiguration:
     result = TransformConfiguration()
 
-    transform = cfg.get('transform', None)
+    transform_cfg = benchmark_cfg.get('transform', None)
+    test_pipeline = transform_cfg.get('test_pipeline', None) if transform_cfg is not None else None
+    if test_pipeline is not None:
+        for t in test_pipeline:
+            transform_object = get_external_transform(t, model_cfg, benchmark_cfg)
+            result.add('test', transform_object)
+
+    transform = model_cfg.get('transform', None)
     if transform is None or len(transform) == 0:
         return result
 
     for t in transform:
         when = t['only'] if 'only' in t else 'all'
-        transform_object = get_transform_by_name(t, cfg)
+        transform_object = get_transform_by_name(t, model_cfg)
         result.add(when, transform_object)
 
     return result
@@ -193,7 +227,7 @@ def main(cfg: DictConfig):
             conf = load_model_configuration(cfg.model.reference, arg, cfg)
             set_cache_dir(conf, cfg.cachedir)
             ml_model = get_model_factory(conf)
-            cfg_transform = get_transform(conf)
+            cfg_transform = get_transform(conf, cfg)
 
         results = execute_task(cfg, cfg_transform, model_hyperparameters, ml_model, pd_dataset)
 

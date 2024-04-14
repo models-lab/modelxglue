@@ -288,10 +288,14 @@ class RemoteDockerClassifier(FileBasedRemoteModel):
 
 class DockerTransform(FeatureTransform, FileBasedRemoteModel):
 
-    def __init__(self, conf, transform_data):
+    def __init__(self, conf, transform_data, transform_folder=None):
         self.conf = conf
-        self.folder = os.path.dirname(conf.file)
         self.transform_data = transform_data
+        if transform_folder:
+            self.transform_folder = transform_folder
+        else:
+            # This is when the transform data is in the same folder as the conf file (e.g. model.yaml)
+            self.transform_folder = os.path.join(os.path.dirname(conf.file), self.transform_data.folder)
 
     def transform(self, X, what):
         #transform_folder = os.path.join(self.conf.cache, self.transform_data.type, what)
@@ -300,13 +304,11 @@ class DockerTransform(FeatureTransform, FileBasedRemoteModel):
         X_file = os.path.join(dirpath, "X.json")
         self.dump_data_as_json(X, X_file)
 
-        folder = os.path.join(self.folder, self.transform_data.folder)
-
         try:
             command = self.transform_data.run
             command = command.replace("{root}", "/shared")
             #run_docker(folder, shared_folder={transform_folder: '/shared'}, command=command)
-            run_docker(folder, shared_folder={dirpath: '/shared'}, command=command)
+            run_docker(self.transform_folder, shared_folder={dirpath: '/shared'}, command=command)
         except docker.errors.ContainerError as err:
             show_docker_errors_and_raise(err)
 

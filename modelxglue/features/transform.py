@@ -22,13 +22,23 @@ class TransformConfiguration:
 
     def add(self, what, transform):
         if what == 'all':
-            self.by_type[TRAIN] = transform.for_(TRAIN)
-            self.by_type[TEST] = transform.for_(TEST)
+            self.add_to_(TRAIN, transform)
+            self.add_to_(TEST, transform)
             return
 
         what = TRAIN if what in ['train', 'training'] else what
         what = TEST if what in ['test', 'testing'] else what
-        self.by_type[what] = transform.for_(what)
+        self.add_to_(what, transform)
+
+    def add_to_(self, what, transform):
+        if what in self.by_type:
+            current_transform = self.by_type[what]
+            if isinstance(current_transform, CompositeTransform):
+                self.by_type[what].steps.append(transform.for_(what))
+            else:
+                self.by_type[what] = CompositeTransform([current_transform, transform.for_(what)])
+        else:
+            self.by_type[what] = transform.for_(what)
 
     def get_transform_for(self, *transform_phases):
         ctx = TransformContext()

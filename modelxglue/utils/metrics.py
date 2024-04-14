@@ -24,7 +24,11 @@ def f1_score_ir(y_true, y_pred):
 
 
 def reciprocal_rank(y_true, y_pred):
-    assert len(y_true) == 1
+    if len(y_true) != 1:
+        print("Warning: y_true size != 1, no prediction was made")
+        return 0
+
+    #assert len(y_true) == 1
     y_true = y_true[0]
     if y_true not in y_pred:
         return 0
@@ -33,7 +37,10 @@ def reciprocal_rank(y_true, y_pred):
 
 
 def success_rate(y_true, y_pred):
-    assert len(y_true) == 1
+    if len(y_true) != 1:
+        print("Warning: y_true size != 1, no prediction was made")
+        return 0
+    #assert len(y_true) == 1
     y_true = y_true[0]
     if y_true in y_pred:
         return 1
