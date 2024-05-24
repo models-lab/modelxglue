@@ -210,7 +210,10 @@ def main(cfg: DictConfig):
     # This is not straightforward, because now everyone can define its own model
     # some_compatibility_checks(cfg.model.ml_model, cfg.model.encoding_features)
     seed_all(cfg.seed)
-
+    # Empty the contents of the hashes file.
+    lockfile_path = "dependencies.lock"
+    with open("dependencies.lock", 'w') as file:
+        pass
     pd_dataset = load_dataset(cfg.dataset, cfg.task.task_name)
     logger.info(f'Loaded {cfg.dataset.dataset_hg}, samples: {len(pd_dataset)}')
 

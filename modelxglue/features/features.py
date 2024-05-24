@@ -9,7 +9,7 @@ from ..utils.txt_utils import tokenizer
 from .kernel_features import get_pairwise_kernel
 from .transform import FeatureTransform
 
-EMBEDDING_MODEL = None
+EMBEDDING_MODEL = 'a'
 FEATURES = ('TFIDF', 'W2V', 'KERNEL', 'GRAPH', 'XMI')
 
 
@@ -17,6 +17,13 @@ def get_embedding_model():
     global EMBEDDING_MODEL
     if EMBEDDING_MODEL is None:
         EMBEDDING_MODEL = api.load("glove-wiki-gigaword-300")
+    else:
+        # Load HF model.
+        repo_id = "CarlosUM/embeddings"
+        file_path = "sgram-mde.kv"
+        local_file_path = hf_hub_download(repo_id=repo_id, filename=file_path)
+        EMBEDDING_MODEL = KeyedVectors.load(local_file_path)
+
     return EMBEDDING_MODEL
 
 

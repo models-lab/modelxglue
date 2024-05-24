@@ -18,7 +18,7 @@ from ..models.models import ModelFactory
 from ..utils.docker_env import run_docker
 
 import docker
-
+import hashlib
 
 class FileBasedRemoteModel:
     def __init__(self, conf):
@@ -177,10 +177,32 @@ class PythonEnvClassifier(FileBasedRemoteModel):
         else:
             print("found virtual python: " + virtual_dir)
 
+
+
     def install_dependencies(self):
-        subprocess.call([self.pip_exe(), "install", "-r", os.path.join(self.conf.cache, "requirements.txt")])
-        if 'more_requirements' in self.conf.environment:
-            subprocess.call([self.pip_exe(), "install", "-r", os.path.join(self.conf.cache, "more_requirements.txt")])
+        # Calculate MD5 Hash for the requrements file.
+        md5 = hashlib.md5(open(os.path.join(self.conf.cache, "requirements.txt"), 'rb').read()).hexdigest()
+        lockfile_path = "dependencies.lock"
+        lines = []
+        # Check if that requirements have already been installed.
+        # Read all md5 sums of installed files.
+        if os.path.exists(lockfile_path):
+            with open(lockfile_path, 'r') as lockfile:
+                lines = lockfile.readlines()
+        # Check if this md5 is already in the file. If not, then install.
+        # And append the md5 to the file of hashes.
+        if md5 + '\n' not in lines:
+            with open(lockfile_path, 'a') as lockfile:
+                lockfile.write(md5 + '\n')
+            print(f'The MD5 hash of requirements.txt has been added to {lockfile_path}')
+            subprocess.call([self.pip_exe(), "install", "-r", os.path.join(self.conf.cache, "requirements.txt")])
+            if 'more_requirements' in self.conf.environment:
+                subprocess.call(
+                    [self.pip_exe(), "install", "-r", os.path.join(self.conf.cache, "more_requirements.txt")])
+
+        else:
+            print(f'The MD5 hash of requirements.txt is already in {lockfile_path}')
+
 
     def venv_dir(self):
         return os.path.join(self.conf.cache, "venv")
