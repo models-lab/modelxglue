@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import subprocess
+import json
 
 import pandas as pd
 
@@ -182,26 +183,34 @@ class PythonEnvClassifier(FileBasedRemoteModel):
     def install_dependencies(self):
         # Calculate MD5 Hash for the requrements file.
         md5 = hashlib.md5(open(os.path.join(self.conf.cache, "requirements.txt"), 'rb').read()).hexdigest()
-        lockfile_path = "dependencies.lock"
-        lines = []
+        lockfile_path = os.path.join(self.conf.cache, "dependencies.lock")
         # Check if that requirements have already been installed.
         # Read all md5 sums of installed files.
+        data = {}
         if os.path.exists(lockfile_path):
-            with open(lockfile_path, 'r') as lockfile:
-                lines = lockfile.readlines()
+            if os.path.getsize(lockfile_path) > 0:
+                with open(lockfile_path, 'r') as lockfile:
+                    data = json.load(lockfile)
         # Check if this md5 is already in the file. If not, then install.
         # And append the md5 to the file of hashes.
-        if md5 + '\n' not in lines:
-            with open(lockfile_path, 'a') as lockfile:
-                lockfile.write(md5 + '\n')
-            print(f'The MD5 hash of requirements.txt has been added to {lockfile_path}')
-            subprocess.call([self.pip_exe(), "install", "-r", os.path.join(self.conf.cache, "requirements.txt")])
+        with open(lockfile_path, 'w') as lockfile:
+            if data.get("requirements.txt") == md5:
+                print("Requirements were already installed.")
+            else:
+                subprocess.call([self.pip_exe(), "install", "-r", os.path.join(self.conf.cache, "requirements.txt")])
+                data["requirements.txt"] = md5
+                print(f'The MD5 hash of requirements.txt has been added to {lockfile_path}')
             if 'more_requirements' in self.conf.environment:
-                subprocess.call(
-                    [self.pip_exe(), "install", "-r", os.path.join(self.conf.cache, "more_requirements.txt")])
+                md5 = hashlib.md5(open(os.path.join(self.conf.cache, "more_requirements.txt"), 'rb').read()).hexdigest()
+                if data.get("more_requirements.txt") == md5:
+                    print("More equirements were already installed.")
+                else:
+                    data["requirements.txt"] = md5
+                    subprocess.call(
+                        [self.pip_exe(), "install", "-r", os.path.join(self.conf.cache, "more_requirements.txt")])
+                    print(f'The MD5 hash of more_requirements.txt has been added to {lockfile_path}')
 
-        else:
-            print(f'The MD5 hash of requirements.txt is already in {lockfile_path}')
+            json.dump(data, lockfile, indent=4)
 
 
     def venv_dir(self):
