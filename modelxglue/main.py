@@ -28,11 +28,9 @@ warnings.filterwarnings("ignore")
 
 logger = logging.getLogger()
 
-
 def seed_all(seed):
     random.seed(seed)
     np.random.seed(seed)
-
 
 def save_results(output_path, results, configuration):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -101,7 +99,7 @@ def get_transform_by_name(t, cfg):
         return DockerTransform(cfg, t)
     elif type == 'vectorize-text':
         separator = ' ' if 'separator' not in t else t.separator
-        return VectorizeText(t.columns, t.strategy, separator)
+        return VectorizeText(t.columns, t.strategy, t.embedding_type, t.embedding_model, t.embedding_file, separator)
     elif type == 'kernel':
         return KernelTransform(t.column)
     elif type == 'composite':
@@ -210,7 +208,10 @@ def main(cfg: DictConfig):
     # This is not straightforward, because now everyone can define its own model
     # some_compatibility_checks(cfg.model.ml_model, cfg.model.encoding_features)
     seed_all(cfg.seed)
-
+    # Empty the contents of the hashes file.
+    lockfile_path = "dependencies.lock"
+    with open("dependencies.lock", 'w') as file:
+        pass
     pd_dataset = load_dataset(cfg.dataset, cfg.task.task_name)
     logger.info(f'Loaded {cfg.dataset.dataset_hg}, samples: {len(pd_dataset)}')
 

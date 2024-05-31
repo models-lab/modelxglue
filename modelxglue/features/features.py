@@ -9,15 +9,11 @@ from ..utils.txt_utils import tokenizer
 from .kernel_features import get_pairwise_kernel
 from .transform import FeatureTransform
 
-EMBEDDING_MODEL = None
+EMBEDDING_MODEL = 'a'
 FEATURES = ('TFIDF', 'W2V', 'KERNEL', 'GRAPH', 'XMI')
 
 
-def get_embedding_model():
-    global EMBEDDING_MODEL
-    if EMBEDDING_MODEL is None:
-        EMBEDDING_MODEL = api.load("glove-wiki-gigaword-300")
-    return EMBEDDING_MODEL
+
 
 
 def get_features_w2v(doc, model, dim=300):

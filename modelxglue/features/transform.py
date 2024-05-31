@@ -8,7 +8,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 from ..features.kernel_features import to_grakel_graph
 from ..utils.txt_utils import tokenizer
+from huggingface_hub import hf_hub_download
+from gensim.models import KeyedVectors
+from gensim.models.fasttext import save_facebook_model, load_facebook_model
 
+from tqdm import tqdm
 import numpy as np
 
 TRAIN = 'training-set'
@@ -135,11 +139,13 @@ class DumpXmiTransform(FeatureTransform):
 
 class VectorizeText(FeatureTransform):
 
-    def __init__(self, columns, strategy, separator=''):
+    def __init__(self, columns, strategy, embedding_type = None, embedding_model = None, embedding_file = None, separator=''):
         super().__init__()
         self.columns = columns
         self.strategy = strategy
-        self.embedding_model = None
+        self.embedding_type = embedding_type
+        self.embedding_model = embedding_model
+        self.embedding_file = embedding_file
         self.separator = "\n" if separator == "\\n" or separator == 'newline' else separator
 
     def transform(self, df, what):
@@ -157,7 +163,8 @@ class VectorizeText(FeatureTransform):
 
             # Be smarter here and check that everything is correctly set in the YAML
         elif self.strategy.lower() == 'glove':
-            as_vector = np.array([self.get_features_w2v(doc, self.get_embedding_model()) for doc in corpus])
+            embedding_model = self.get_embedding_model()
+            as_vector = np.array([self.get_features_w2v(doc, embedding_model) for doc in tqdm(corpus)])
         else:
             raise ValueError(f"Unknown strategy {self.strategy}")
 
@@ -165,16 +172,35 @@ class VectorizeText(FeatureTransform):
         return pd.concat([df, df_vector], axis=1)
 
     def get_features_w2v(self, doc, model, dim=300):
-        words = [w for w in tokenizer(doc, separator=self.separator) if w in model.vocab]
-        if len(words) == 0:
-            return np.zeros(dim)
-        vectors = np.stack([model.wv[w] for w in words])
+        #words = [w for w in tokenizer(doc, separator=self.separator) if w in model.vocab]
+        vectors = []
+        if self.embedding_type == "fasttext":
+            words = [w for w in tokenizer(doc, separator=self.separator)]
+            if len(words) == 0:
+                return np.zeros(dim)
+            vectors = np.stack([model.wv[w] for w in words])
+        else:
+            words = [w for w in tokenizer(doc, separator=self.separator) if w in model.key_to_index]
+            if len(words) == 0:
+                return np.zeros(dim)
+            vectors = np.stack([model.key_to_index[w] for w in words])
         return np.mean(vectors, axis=0)
 
     def get_embedding_model(self):
-        if self.embedding_model is None:
+        if self.embedding_type is None:
             import gensim.downloader as api
             self.embedding_model = api.load("glove-wiki-gigaword-300")
+        elif self.embedding_type == "fasttext":
+            repo_id = self.embedding_model
+            file_path = self.embedding_file
+            local_file_path = hf_hub_download(repo_id=repo_id, filename=file_path)
+            self.embedding_model = load_facebook_model(local_file_path)
+        else:
+            repo_id = self.embedding_model
+            file_path = self.embedding_file
+            local_file_path = hf_hub_download(repo_id=repo_id, filename=file_path)
+            hf_hub_download(repo_id=repo_id, filename=file_path + ".vectors.npy")
+            self.embedding_model = KeyedVectors.load(local_file_path)
         return self.embedding_model
 
 
